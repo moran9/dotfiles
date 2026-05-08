@@ -1,0 +1,14 @@
+{
+  "editor.formatOnSave": true,
+  "files.associations": {
+    "**/waybar/config": "json"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.tabSize": 2
+  },
+  "[css]": {
+    "editor.defaultFormatter": "vscode.css-language-features",
+    "editor.tabSize": 2
+  }
+}
