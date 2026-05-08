@@ -53,6 +53,23 @@ window#waybar {
     color: #6c7086;
 }
 
+#custom-claude-usage {
+    padding: 0 12px;
+    color: #cdd6f4;
+}
+
+#custom-claude-usage.low {
+    color: #a6e3a1;
+}
+
+#custom-claude-usage.medium {
+    color: #f9e2af;
+}
+
+#custom-claude-usage.high {
+    color: #f38ba8;
+}
+
 #custom-power {
     font-size: 24px;
     padding: 0 12px;

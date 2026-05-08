@@ -24,6 +24,7 @@ apply_waybar() {
     local dest="$HOME/.config/waybar"
     mkdir -p "$dest"
     cp -r "$DOTFILES_DIR/waybar/." "$dest/"
+    chmod +x "$dest/scripts/"*.py 2>/dev/null || true
     pkill -x waybar 2>/dev/null || true
     sleep 0.3
     waybar >/dev/null 2>&1 &

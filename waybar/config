@@ -11,6 +11,7 @@
         "wlr/taskbar"
     ],
     "modules-right": [
+        "custom/claude-usage",
         "pulseaudio",
         "clock",
         "tray",
@@ -55,6 +56,12 @@
     },
     "tray": {
         "spacing": 8
+    },
+    "custom/claude-usage": {
+        "exec": "~/.config/waybar/scripts/claude_usage.py",
+        "return-type": "json",
+        "interval": 30,
+        "tooltip": true
     },
     "custom/power": {
         "format": "⏻",
