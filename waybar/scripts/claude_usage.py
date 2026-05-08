@@ -7,6 +7,10 @@ from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
+# Output token limit for your Claude Code plan per 5h window.
+# Pro ≈ 88_000 · Max 5x ≈ 440_000 · Max 20x ≈ 1_760_000
+LIMIT_5H = 88_000
+
 
 def load_usage():
     now = datetime.now(timezone.utc)
@@ -61,17 +65,18 @@ def fmt(n):
 def main():
     t5h, t7d = load_usage()
 
-    text = f"󰚩 {fmt(t5h)}"
+    pct_5h = min(round(t5h / LIMIT_5H * 100), 100)
+    pct_7d = min(round(t7d / (LIMIT_5H * 7 * 24 / 5) * 100), 100)
+    text = f"󰚩 {pct_5h}% · {pct_7d}%"
     tooltip = (
         f"Claude Code Usage\n"
-        f"Session (5h):  {t5h:,} tokens\n"
-        f"Last 7 days:   {t7d:,} tokens"
+        f"Session (5h):  {pct_5h}% · {t5h:,} / {LIMIT_5H:,} tokens\n"
+        f"Last 7 days:   {pct_7d}% · {t7d:,} tokens"
     )
 
-    # Visual hint: dim = plenty of room, normal = moderate, warning = heavy use
-    if t5h < 20_000:
+    if pct_5h < 40:
         css_class = "low"
-    elif t5h < 60_000:
+    elif pct_5h < 75:
         css_class = "medium"
     else:
         css_class = "high"
