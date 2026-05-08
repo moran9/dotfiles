@@ -7,9 +7,10 @@ from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
-# Output token limit for your Claude Code plan per 5h window.
-# Pro ≈ 88_000 · Max 5x ≈ 440_000 · Max 20x ≈ 1_760_000
-LIMIT_5H = 88_000
+# Token limit per 5h window (output + cache_creation tokens).
+# Back-calculated from Claude Code's own usage meter.
+# Pro ≈ 180_000 · Max 5x ≈ 900_000 · Max 20x ≈ 3_600_000
+LIMIT_5H = 180_000
 
 
 def load_usage():
@@ -38,8 +39,12 @@ def load_usage():
                         continue
 
                     usage = msg.get("usage", {})
-                    out = usage.get("output_tokens", 0)
-                    if not out:
+                    # Count output + cache_creation — matches Claude Code's own meter
+                    tokens = (
+                        usage.get("output_tokens", 0)
+                        + usage.get("cache_creation_input_tokens", 0)
+                    )
+                    if not tokens:
                         continue
 
                     ts_str = entry.get("timestamp", "")
@@ -49,9 +54,9 @@ def load_usage():
                         continue
 
                     if ts >= cutoff_7d:
-                        tokens_7d += out
+                        tokens_7d += tokens
                     if ts >= cutoff_5h:
-                        tokens_5h += out
+                        tokens_5h += tokens
         except OSError:
             continue
 
