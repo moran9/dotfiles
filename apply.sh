@@ -20,6 +20,13 @@ apply_hypr() {
     echo "  hypr: config applied and reloaded"
 }
 
+apply_kitty() {
+    local dest="$HOME/.config/kitty"
+    mkdir -p "$dest"
+    cp -r "$DOTFILES_DIR/kitty/." "$dest/"
+    echo "  kitty: config applied"
+}
+
 apply_waybar() {
     local dest="$HOME/.config/waybar"
     mkdir -p "$dest"
@@ -34,7 +41,7 @@ apply_waybar() {
 
 # ── dispatch ────────────────────────────────────────────────────────────────
 
-ALL_UTILITIES=(hypr waybar)
+ALL_UTILITIES=(hypr waybar kitty)
 targets=("${@:-${ALL_UTILITIES[@]}}")
 
 for util in "${targets[@]}"; do
