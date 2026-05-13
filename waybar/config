@@ -6,7 +6,6 @@
     "margin-left": 10,
     "margin-right": 10,
     "spacing": 0,
-
     "modules-left": [
         "hyprland/workspaces",
         "hyprland/submap",
@@ -26,7 +25,6 @@
         "tray",
         "custom/power"
     ],
-
     "hyprland/workspaces": {
         "format": "{name}",
         "all-outputs": false,
@@ -35,15 +33,15 @@
         "on-scroll-up": "hyprctl dispatch workspace e+1",
         "on-scroll-down": "hyprctl dispatch workspace e-1",
         "sort-by-number": true,
-        "persistent-workspaces": { "*": 0 }
+        "persistent-workspaces": {
+            "*": 0
+        }
     },
-
     "hyprland/submap": {
         "format": " {}",
         "max-length": 24,
         "tooltip": false
     },
-
     "hyprland/window": {
         "format": "{title}",
         "max-length": 60,
@@ -54,69 +52,57 @@
             "(.*) — Dolphin": "$1 "
         }
     },
-
-    "wlr/taskbar": {
-        "format": "{icon}",
-        "icon-size": 16,
-        "spacing": 4,
-        "tooltip-format": "{title}",
-        "on-click": "activate",
-        "on-click-middle": "close",
-        "ignore-list": [],
-        "app_ids-mapping": {}
-    },
-
     "custom/claude-usage": {
         "exec": "~/.config/waybar/scripts/claude_usage.py",
         "return-type": "json",
         "interval": 30,
         "tooltip": true
     },
-
     "network": {
         "format-wifi": " {essid}",
         "format-ethernet": " {ipaddr}",
         "format-disconnected": " off",
         "tooltip-format": "{ifname} via {gwaddr}\n{ipaddr}/{cidr}\n {bandwidthDownBits}   {bandwidthUpBits}",
-        "on-click":       "~/.config/hypr/scripts/wifi-popup.sh",
+        "on-click": "~/.config/hypr/scripts/wifi-popup.sh",
         "on-click-right": "nm-connection-editor"
     },
-
     "pulseaudio": {
         "format": "{icon} {volume}%",
         "format-muted": " muted",
         "format-bluetooth": "{icon} {volume}% ",
         "format-icons": {
-            "headphone":  "",
+            "headphone": "",
             "hands-free": "",
-            "headset":    "",
-            "phone":      "",
-            "portable":   "",
-            "car":        "",
-            "default":    ["", "", ""]
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
+            "default": [
+                "",
+                "",
+                ""
+            ]
         },
         "scroll-step": 5,
-        "on-click":        "~/.config/hypr/scripts/audio-popup.sh",
-        "on-click-right":  "pavucontrol",
+        "on-click": "~/.config/hypr/scripts/audio-popup.sh",
+        "on-click-right": "pavucontrol",
         "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
-        "tooltip-format":  "{desc}\nleft: mixer (per-app)\nright: pavucontrol\nmiddle: mute toggle"
+        "tooltip-format": "{desc}\nleft: mixer (per-app)\nright: pavucontrol\nmiddle: mute toggle"
     },
-
     "bluetooth": {
-        "format":                       " {status}",
-        "format-disabled":              " off",
-        "format-off":                   " off",
-        "format-on":                    " on",
-        "format-connected":             " {device_alias}",
-        "format-connected-battery":     " {device_alias} {device_battery_percentage}%",
-        "tooltip-format":                             "{controller_alias}\t{controller_address}\n{num_connections} connected",
-        "tooltip-format-connected":                   "{controller_alias}\t{controller_address}\n{num_connections} connected\n\n{device_enumerate}",
-        "tooltip-format-enumerate-connected":         "{device_alias}\t{device_address}",
+        "format": " {status}",
+        "format-disabled": " off",
+        "format-off": " off",
+        "format-on": " on",
+        "format-connected": " {device_alias}",
+        "format-connected-battery": " {device_alias} {device_battery_percentage}%",
+        "tooltip-format": "{controller_alias}\t{controller_address}\n{num_connections} connected",
+        "tooltip-format-connected": "{controller_alias}\t{controller_address}\n{num_connections} connected\n\n{device_enumerate}",
+        "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
         "tooltip-format-enumerate-connected-battery": "{device_alias}\t{device_address}\t{device_battery_percentage}%",
-        "on-click":       "~/.config/hypr/scripts/bluetooth-popup.sh",
+        "on-click": "~/.config/hypr/scripts/bluetooth-popup.sh",
         "on-click-right": "blueman-manager"
     },
-
     "custom/caffeine": {
         "exec": "~/.config/waybar/scripts/caffeine.sh",
         "return-type": "json",
@@ -124,7 +110,6 @@
         "on-click": "~/.config/waybar/scripts/caffeine.sh toggle",
         "tooltip": true
     },
-
     "custom/mako": {
         "exec": "~/.config/waybar/scripts/mako_status.sh",
         "return-type": "json",
@@ -132,22 +117,35 @@
         "on-click": "~/.config/waybar/scripts/mako_status.sh toggle",
         "tooltip": true
     },
-
     "clock": {
         "format": " {:%H:%M}",
         "format-alt": " {:%a %d %b %Y}",
         "tooltip-format": "<big>{:%B %Y}</big>\n<tt>{calendar}</tt>",
         "on-click": "switch-format"
     },
-
     "tray": {
         "spacing": 8,
         "icon-size": 16
     },
-
     "custom/power": {
         "format": "",
         "tooltip": false,
         "on-click": "wlogout"
+    },
+    "wlr/taskbar": {
+        "format": "{icon}",
+        "icon-size": 18,
+        "spacing": 8,
+        "tooltip-format": "{title}",
+        "on-click": "activate",
+        "on-click-middle": "close",
+        "all-outputs": false,
+        "ignore-list": [
+            "waybar",
+            "hypr-cheatsheet",
+            "kitty_dropdown",
+            "hypr-audio-popup",
+            "hypr-bt-popup"
+        ]
     }
 }

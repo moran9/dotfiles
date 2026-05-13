@@ -27,7 +27,6 @@ window#waybar {
 #workspaces,
 #submap,
 #window,
-#taskbar,
 #clock,
 #network,
 #bluetooth,
@@ -76,6 +75,34 @@ window#waybar {
     background-color: #f38ba8;
 }
 
+/* ── wlr/taskbar (open apps in centre, one icon per window) ────── */
+/* Wlr taskbar uses GTK image widgets so it can render real icons
+ * from the system icon theme (Papirus-Dark, set via gsettings).
+ * `all-outputs=false` in the module config means each monitor's bar
+ * only shows the windows on workspaces assigned to that monitor —
+ * matching the odd/even-monitor split in hypr/conf.d/10-monitors.conf. */
+#taskbar {
+    background-color: rgba(30, 30, 46, 0.78);
+    border: 1px solid rgba(203, 166, 247, 0.16);
+    border-radius: 999px;
+    padding: 0 6px;
+    margin: 3px 3px;
+}
+#taskbar button {
+    padding: 0 6px;
+    margin: 2px 1px;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    transition: background 150ms ease;
+}
+#taskbar button:hover {
+    background: rgba(203, 166, 247, 0.20);
+}
+#taskbar button.active {
+    background: rgba(203, 166, 247, 0.30);
+}
+
 /* ── Submap indicator (RESIZE / LAYOUTS) ───────────────────────── */
 #submap {
     color: #f9e2af;
@@ -92,27 +119,6 @@ window#waybar {
 window#waybar.empty #window {
     background-color: transparent;
     border-color: transparent;
-}
-
-/* ── wlr/taskbar (open apps) ──────────────────────────────────── */
-#taskbar {
-    padding: 0 6px;
-}
-
-#taskbar button {
-    padding: 0 4px;
-    margin: 2px 1px;
-    background: transparent;
-    border-radius: 8px;
-    transition: background 150ms ease;
-}
-
-#taskbar button:hover {
-    background: rgba(203, 166, 247, 0.20);
-}
-
-#taskbar button.active {
-    background: rgba(203, 166, 247, 0.30);
 }
 
 /* ── Right-cluster accent colors ───────────────────────────────── */
