@@ -1,67 +1,395 @@
 #!/usr/bin/env bash
-# apply.sh — Copy configs from the dotfiles repo to ~/.config and reload each utility.
+# apply.sh — install dependencies via yay, copy configs to ~/.config,
+# and reload running services.
+#
 # Usage:
-#   ./apply.sh          # apply all utilities
-#   ./apply.sh hypr     # apply only hypr
-#   ./apply.sh waybar   # apply only waybar
+#   ./apply.sh                  # install deps + apply every utility
+#   ./apply.sh hypr waybar      # apply only the listed utilities
+#   ./apply.sh --no-install …   # skip dep install / yay bootstrap
+#
+# Environment:
+#   CLAUDE_PLAN=pro|max5|max20  exposed to waybar's claude-usage widget
+#                               (defaults to "pro" if unset)
 
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── per-utility handlers ────────────────────────────────────────────────────
+# ── arg parsing ─────────────────────────────────────────────────────
+DO_INSTALL=1
+TARGETS=()
+for arg in "$@"; do
+    case "$arg" in
+        --no-install) DO_INSTALL=0 ;;
+        -h|--help)
+            sed -n '2,12p' "$0"
+            exit 0
+            ;;
+        *) TARGETS+=("$arg") ;;
+    esac
+done
+
+ALL_UTILITIES=(hypr hyprpaper kitty waybar mako wofi wlogout xsettingsd autostart theme copyq)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=("${ALL_UTILITIES[@]}")
+
+step() { printf "\n\033[1;35m▸ %s\033[0m\n" "$*"; }
+ok()   { printf "  \033[1;32m✓\033[0m %s\n" "$*"; }
+warn() { printf "  \033[1;33m!\033[0m %s\n" "$*"; }
+
+# ── sudo handling ───────────────────────────────────────────────────
+# yay/pacman/makepkg/chsh all call sudo, and --noconfirm doesn't help
+# with the password prompt itself. Prime the sudo timestamp once
+# (interactively), then keep it alive in the background while we work.
+SUDO_KEEPER_PID=""
+prime_sudo() {
+    step "this run needs sudo (pacman/yay/chsh) — authenticate once"
+    sudo -v
+    # Refresh timestamp every 60s until this script exits.
+    ( while true; do sudo -n true 2>/dev/null || exit; sleep 60; done ) &
+    SUDO_KEEPER_PID=$!
+    trap 'if [[ -n "$SUDO_KEEPER_PID" ]]; then kill "$SUDO_KEEPER_PID" 2>/dev/null || true; fi' EXIT
+}
+
+# ── yay bootstrap ───────────────────────────────────────────────────
+bootstrap_yay() {
+    if command -v yay >/dev/null 2>&1; then
+        return 0
+    fi
+    step "yay not found — bootstrapping from AUR"
+    sudo pacman -S --needed --noconfirm git base-devel
+    local tmp; tmp="$(mktemp -d)"
+    git clone https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+    (cd "$tmp/yay-bin" && makepkg -si --noconfirm)
+    rm -rf "$tmp"
+    ok "yay installed"
+}
+
+# AUR packages with broken PKGBUILDs sometimes invoke build tools they
+# never declared. Install these unconditionally before the main pass so
+# yay-driven makepkg never trips over a missing binary.
+BUILD_DEPS=(scdoc)
+
+install_packages() {
+    [[ -f "$DOTFILES_DIR/packages.txt" ]] || return 0
+    local pkgs
+    mapfile -t pkgs < <(grep -vE '^\s*(#|$)' "$DOTFILES_DIR/packages.txt" | awk '{print $1}')
+    [[ ${#pkgs[@]} -eq 0 ]] && return 0
+
+    step "ensuring AUR build tools: ${BUILD_DEPS[*]}"
+    sudo pacman -S --needed --noconfirm "${BUILD_DEPS[@]}"
+
+    # Clear any half-built AUR cache from previous failed runs so yay
+    # rebuilds from a clean tree (avoids "existing $srcdir/ tree" gotchas).
+    rm -rf "$HOME/.cache/yay/hdrop-git/src" 2>/dev/null || true
+
+    step "installing/updating ${#pkgs[@]} packages via yay"
+    # --answerclean / --answerdiff suppress the interactive build prompts
+    # for AUR packages that have already been built locally.
+    yay -S --needed --noconfirm \
+        --answerclean N --answerdiff N --removemake \
+        "${pkgs[@]}"
+    ok "packages OK"
+}
+
+ensure_zsh_login_shell() {
+    local current; current="$(getent passwd "$USER" | cut -d: -f7)"
+    if [[ "$current" != *zsh ]]; then
+        step "switching login shell to zsh"
+        chsh -s /usr/bin/zsh "$USER"
+        ok "login shell now zsh (re-login required)"
+    fi
+}
+
+ensure_screenshot_dir() {
+    mkdir -p "$HOME/Pictures/Screenshots"
+}
+
+ensure_bluetooth_service() {
+    # The waybar bluetooth module talks to bluez over D-Bus, which only
+    # works once bluetoothd is running. Enable + start the system unit
+    # so it survives reboots and is up for the first apply.
+    if systemctl list-unit-files bluetooth.service >/dev/null 2>&1; then
+        sudo systemctl enable --now bluetooth.service >/dev/null 2>&1 || true
+    fi
+}
+
+ensure_sddm_theme() {
+    # Pick a Catppuccin variant if the AUR theme package is installed.
+    # The package ships several variants under /usr/share/sddm/themes/;
+    # use mauve-mocha to match the desktop accent. Drop-in config files
+    # in /etc/sddm.conf.d/ override the base /etc/sddm.conf.
+    local theme_dir
+    theme_dir="$(ls -d /usr/share/sddm/themes/catppuccin-mocha* 2>/dev/null | head -1)"
+    if [[ -z "$theme_dir" ]]; then
+        return 0  # package not installed yet
+    fi
+    local theme_name; theme_name="$(basename "$theme_dir")"
+    sudo mkdir -p /etc/sddm.conf.d
+    printf "[Theme]\nCurrent=%s\n" "$theme_name" | sudo tee /etc/sddm.conf.d/10-catppuccin.conf >/dev/null
+    ok "sddm: theme set to $theme_name"
+}
+
+ensure_claude_usage_conf() {
+    # The waybar usage widget now queries /api/oauth/usage directly using
+    # the credential the CLI maintains in ~/.claude/.credentials.json,
+    # so no per-machine config is required. Kept as a no-op for legacy
+    # installs that may still source the stub.
+    return 0
+}
+
+ensure_default_wallpaper() {
+    local wp_dir="$HOME/.config/hypr/wallpapers"
+    local wp="$wp_dir/default.jpg"
+    [[ -f "$wp" ]] && return 0
+    mkdir -p "$wp_dir"
+    if command -v magick >/dev/null 2>&1; then
+        magick -size 3840x2160 \
+            gradient:'#1e1e2e-#181825' \
+            "$wp"
+        ok "generated fallback wallpaper at $wp"
+    elif command -v convert >/dev/null 2>&1; then
+        convert -size 3840x2160 \
+            gradient:'#1e1e2e-#181825' \
+            "$wp"
+        ok "generated fallback wallpaper at $wp"
+    else
+        warn "no imagemagick — drop a wallpaper at $wp manually"
+    fi
+}
+
+# ── per-utility handlers ────────────────────────────────────────────
+sync_dir() {
+    # sync_dir <src> <dest>
+    local src="$1" dest="$2"
+    mkdir -p "$dest"
+    cp -rT "$src" "$dest"
+}
 
 apply_hypr() {
-    local dest="$HOME/.config/hypr"
-    mkdir -p "$dest"
-    cp -r "$DOTFILES_DIR/hypr/." "$dest/"
-    # Hyprland is the running session; reload instead of restart
-    hyprctl reload
-    echo "  hypr: config applied and reloaded"
+    sync_dir "$DOTFILES_DIR/hypr" "$HOME/.config/hypr"
+    chmod +x "$HOME/.config/hypr/scripts/"*.sh 2>/dev/null || true
+    if pgrep -x Hyprland >/dev/null 2>&1; then
+        hyprctl reload >/dev/null
+        migrate_workspaces_to_rules
+        ok "hypr: applied + reloaded"
+    else
+        ok "hypr: applied (no running session to reload)"
+    fi
+}
+
+# `hyprctl reload` updates workspace rules but does NOT move existing
+# workspaces to their newly-assigned monitors. Walk the resolved rules
+# and dispatch moveworkspacetomonitor for each so the live session
+# matches the config without a logout.
+migrate_workspaces_to_rules() {
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 <<'PY' || true
+import re, subprocess
+try:
+    rules = subprocess.check_output(["hyprctl", "workspacerules"], text=True, timeout=3)
+except Exception:
+    raise SystemExit(0)
+for block in re.split(r"Workspace rule ", rules):
+    block = block.strip()
+    if not block:
+        continue
+    head, _, body = block.partition("\n")
+    ws = head.split(":")[0].strip()
+    m = re.search(r"monitor:\s*(\S+)", body)
+    if not m:
+        continue
+    mon = m.group(1)
+    if mon in ("<unset>", ""):
+        continue
+    if not (ws.isdigit() or ws.startswith("special:")):
+        continue
+    subprocess.run(
+        ["hyprctl", "dispatch", "moveworkspacetomonitor", ws, mon],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3,
+    )
+PY
+}
+
+apply_hyprpaper() {
+    sync_dir "$DOTFILES_DIR/hyprpaper" "$HOME/.config/hypr"  # config lives next to hyprland.conf
+    if pgrep -x hyprpaper >/dev/null 2>&1; then
+        pkill -x hyprpaper || true
+        sleep 0.2
+    fi
+    if pgrep -x Hyprland >/dev/null 2>&1; then
+        setsid -f hyprpaper >/dev/null 2>&1 || (hyprpaper >/dev/null 2>&1 &)
+    fi
+    ok "hyprpaper: applied"
 }
 
 apply_kitty() {
-    local dest="$HOME/.config/kitty"
-    mkdir -p "$dest"
-    cp -r "$DOTFILES_DIR/kitty/." "$dest/"
-    echo "  kitty: config applied"
+    sync_dir "$DOTFILES_DIR/kitty" "$HOME/.config/kitty"
+    ok "kitty: applied"
 }
 
 apply_waybar() {
-    local dest="$HOME/.config/waybar"
-    mkdir -p "$dest"
-    cp -r "$DOTFILES_DIR/waybar/." "$dest/"
-    chmod +x "$dest/scripts/"*.py 2>/dev/null || true
+    sync_dir "$DOTFILES_DIR/waybar" "$HOME/.config/waybar"
+    chmod +x "$HOME/.config/waybar/scripts/"*.{py,sh} 2>/dev/null || true
     pkill -x waybar 2>/dev/null || true
     sleep 0.3
-    waybar >/dev/null 2>&1 &
-    disown $!
-    echo "  waybar: config applied and restarted"
+    setsid -f waybar >/dev/null 2>&1 || (waybar >/dev/null 2>&1 &)
+    ok "waybar: applied + restarted"
 }
 
-# ── dispatch ────────────────────────────────────────────────────────────────
+apply_mako() {
+    sync_dir "$DOTFILES_DIR/mako" "$HOME/.config/mako"
+    if pgrep -x mako >/dev/null 2>&1; then
+        makoctl reload >/dev/null 2>&1 || { pkill -x mako; sleep 0.2; setsid -f mako >/dev/null 2>&1 || (mako >/dev/null 2>&1 &); }
+    fi
+    ok "mako: applied"
+}
 
-ALL_UTILITIES=(hypr waybar kitty)
-targets=("${@:-${ALL_UTILITIES[@]}}")
+apply_wofi() {
+    sync_dir "$DOTFILES_DIR/wofi" "$HOME/.config/wofi"
+    ok "wofi: applied"
+}
 
-for util in "${targets[@]}"; do
-    dir="$DOTFILES_DIR/$util"
+apply_wlogout() {
+    sync_dir "$DOTFILES_DIR/wlogout" "$HOME/.config/wlogout"
+    ok "wlogout: applied"
+}
 
-    if [[ ! -d "$dir" ]]; then
-        echo "  $util: directory not found, skipping"
-        continue
+# CopyQ ignores Qt's QPalette — it ships its own theme system stored
+# inline in ~/.config/copyq/copyq.conf's [Theme] section. We sync the
+# Catppuccin Mocha theme INI under ~/.config/copyq/themes/ AND merge
+# its keys into copyq.conf so the running daemon picks them up on
+# restart, without clobbering the user's [Options]/[Shortcuts]/etc.
+apply_copyq() {
+    local conf="$HOME/.config/copyq/copyq.conf"
+    local theme_src="$DOTFILES_DIR/copyq/themes/CatppuccinMocha.ini"
+    mkdir -p "$HOME/.config/copyq/themes"
+    cp -f "$theme_src" "$HOME/.config/copyq/themes/CatppuccinMocha.ini"
+
+    if [[ ! -f "$conf" ]]; then
+        # Fresh install — CopyQ writes copyq.conf on first launch.
+        # Start it briefly so the file exists, then we'll patch.
+        if pgrep -x copyq >/dev/null 2>&1; then
+            :  # already running
+        else
+            setsid -f copyq >/dev/null 2>&1
+            sleep 1
+            [[ -f "$conf" ]] || { warn "copyq: copyq.conf still missing"; return 0; }
+        fi
     fi
 
-    # Skip empty directories
-    if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
-        echo "  $util: no files, skipping"
+    # Merge the theme INI's [General] keys into copyq.conf's [Theme].
+    # Python keeps the rest of the conf untouched.
+    python3 - "$conf" "$theme_src" <<'PY'
+import configparser, sys
+conf_path, theme_path = sys.argv[1], sys.argv[2]
+src = configparser.ConfigParser(interpolation=None)
+src.read(theme_path)
+dst = configparser.ConfigParser(interpolation=None)
+dst.optionxform = str  # preserve case (CopyQ keys are mixed)
+dst.read(conf_path)
+if not dst.has_section("Theme"):
+    dst.add_section("Theme")
+for k, v in src["General"].items():
+    # strip surrounding quotes that configparser may keep
+    dst["Theme"][k] = v.strip()
+with open(conf_path, "w") as f:
+    dst.write(f, space_around_delimiters=False)
+PY
+
+    # Reload copyq so the new theme renders immediately.
+    if pgrep -x copyq >/dev/null 2>&1; then
+        pkill -x copyq 2>/dev/null || true
+        sleep 0.3
+        setsid -f copyq >/dev/null 2>&1 || (copyq >/dev/null 2>&1 &)
+    fi
+    ok "copyq: Catppuccin Mocha theme applied"
+}
+
+apply_xsettingsd() {
+    sync_dir "$DOTFILES_DIR/xsettingsd" "$HOME/.config/xsettingsd"
+    if command -v xsettingsd >/dev/null 2>&1; then
+        pkill -x xsettingsd 2>/dev/null || true
+        sleep 0.2
+        setsid -f xsettingsd -c "$HOME/.config/xsettingsd/xsettingsd.conf" >/dev/null 2>&1 \
+            || (xsettingsd -c "$HOME/.config/xsettingsd/xsettingsd.conf" >/dev/null 2>&1 &)
+    fi
+    ok "xsettingsd: applied"
+}
+
+# User-side autostart overrides — XDG spec says user files in
+# ~/.config/autostart/ supersede /etc/xdg/autostart/, so these suppress
+# nm-applet and blueman-applet (whose tray icons would duplicate the
+# native waybar network+bluetooth modules).
+apply_autostart() {
+    sync_dir "$DOTFILES_DIR/autostart" "$HOME/.config/autostart"
+    # Kill any instances spawned earlier in this session.
+    pkill -x nm-applet 2>/dev/null || true
+    pkill -f blueman-applet 2>/dev/null || true
+    pkill -f blueman-tray 2>/dev/null || true
+    ok "autostart: suppressed redundant tray applets"
+}
+
+# GTK + minimal Qt theming + env. GTK is the primary theme target
+# (Nautilus, CopyQ's dialogs, portals); Qt apps get a Fusion-styled
+# Catppuccin palette via qt6ct/qt5ct so CopyQ et al. render dark.
+# KDE Frameworks 6 apps stay un-themed on purpose — see packages.txt.
+apply_theme() {
+    sync_dir "$DOTFILES_DIR/qt6ct"          "$HOME/.config/qt6ct"
+    sync_dir "$DOTFILES_DIR/qt5ct"          "$HOME/.config/qt5ct"
+    sync_dir "$DOTFILES_DIR/gtk-3.0"        "$HOME/.config/gtk-3.0"
+    sync_dir "$DOTFILES_DIR/gtk-4.0"        "$HOME/.config/gtk-4.0"
+    sync_dir "$DOTFILES_DIR/environment.d"  "$HOME/.config/environment.d"
+
+    # qt6ct/qt5ct's color_scheme_path field needs an absolute path —
+    # its INI parser does not expand $HOME or ~. We use @HOME@ as a
+    # portable placeholder and substitute it here.
+    for cfg in "$HOME/.config/qt6ct/qt6ct.conf" "$HOME/.config/qt5ct/qt5ct.conf"; do
+        [[ -f "$cfg" ]] && sed -i "s|@HOME@|$HOME|g" "$cfg"
+    done
+
+    # Re-read environment.d in the live systemd user manager so
+    # services spawned now (e.g. xdg-portals) pick up the new env.
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user import-environment 2>/dev/null || true
+
+    if command -v gsettings >/dev/null 2>&1; then
+        gsettings set org.gnome.desktop.interface gtk-theme    "catppuccin-mocha-mauve-standard+default" 2>/dev/null || true
+        gsettings set org.gnome.desktop.interface icon-theme   "Papirus-Dark"                            2>/dev/null || true
+        gsettings set org.gnome.desktop.interface cursor-theme "catppuccin-mocha-dark-cursors"           2>/dev/null || true
+        gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"                             2>/dev/null || true
+        gsettings set org.gnome.desktop.interface font-name    "Noto Sans 11"                            2>/dev/null || true
+    fi
+    ok "theme: GTK applied (Catppuccin Mocha Mauve)"
+}
+
+# ── run ─────────────────────────────────────────────────────────────
+if (( DO_INSTALL )); then
+    prime_sudo
+    bootstrap_yay
+    install_packages
+    ensure_zsh_login_shell
+    ensure_bluetooth_service
+    ensure_sddm_theme
+fi
+
+ensure_screenshot_dir
+ensure_default_wallpaper
+ensure_claude_usage_conf
+
+step "applying configs: ${TARGETS[*]}"
+for util in "${TARGETS[@]}"; do
+    if ! declare -f "apply_$util" >/dev/null; then
+        warn "$util: no handler defined, skipping"
         continue
     fi
-
-    if ! declare -f "apply_$util" >/dev/null 2>&1; then
-        echo "  $util: no handler defined, skipping"
+    # `theme` is a meta-handler that syncs multiple dirs (qt6ct/, qt5ct/,
+    # gtk-3.0/, gtk-4.0/, environment.d/, kde/) — there is no top-level
+    # theme/ dir.
+    if [[ "$util" != "theme" && ! -d "$DOTFILES_DIR/$util" ]]; then
+        warn "$util: directory not found in repo, skipping"
         continue
     fi
-
     "apply_$util"
 done
+
+step "done"
