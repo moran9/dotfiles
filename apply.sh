@@ -114,15 +114,17 @@ ensure_bluetooth_service() {
 }
 
 ensure_sddm_theme() {
-    # Pick a Catppuccin variant if the AUR theme package is installed.
-    # The package ships several variants under /usr/share/sddm/themes/;
-    # use mauve-mocha to match the desktop accent. Drop-in config files
-    # in /etc/sddm.conf.d/ override the base /etc/sddm.conf.
+    # The AUR sddm-catppuccin-git package installs a single theme dir
+    # `catppuccin` (flavor + accent are selected inside theme.conf, not
+    # via separate theme dirs). Older versions used `catppuccin-mocha*`
+    # subdirs — try both patterns so this works across package versions.
     local theme_dir
-    theme_dir="$(ls -d /usr/share/sddm/themes/catppuccin-mocha* 2>/dev/null | head -1)"
-    if [[ -z "$theme_dir" ]]; then
-        return 0  # package not installed yet
-    fi
+    for candidate in /usr/share/sddm/themes/catppuccin-mocha-mauve \
+                     /usr/share/sddm/themes/catppuccin-mocha \
+                     /usr/share/sddm/themes/catppuccin; do
+        [[ -d "$candidate" ]] && { theme_dir="$candidate"; break; }
+    done
+    [[ -z "$theme_dir" ]] && return 0
     local theme_name; theme_name="$(basename "$theme_dir")"
     sudo mkdir -p /etc/sddm.conf.d
     printf "[Theme]\nCurrent=%s\n" "$theme_name" | sudo tee /etc/sddm.conf.d/10-catppuccin.conf >/dev/null
