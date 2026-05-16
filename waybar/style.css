@@ -1,61 +1,168 @@
+/* Catppuccin Mocha — minimal floating-pill bar.
+ * The bar window itself is invisible; each module group gets its own
+ * rounded "pill" with a soft Catppuccin tint and 1px lavender border. */
+
 * {
-    font-family: "JetBrains Mono", "Noto Sans", monospace;
-    font-size: 13px;
+    font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font", "Noto Sans", monospace;
+    font-size: 12px;
     border: none;
     border-radius: 0;
     min-height: 0;
 }
 
 window#waybar {
-    background-color: #1e1e2e;
+    background-color: transparent;
     color: #cdd6f4;
+}
+
+/* The three module-row containers stay transparent — only the pills show. */
+.modules-left,
+.modules-center,
+.modules-right {
+    background: transparent;
+    padding: 0;
+}
+
+/* Default pill style applied to every module. Each one floats on its own. */
+#workspaces,
+#submap,
+#window,
+#clock,
+#network,
+#bluetooth,
+#pulseaudio,
+#tray,
+#custom-mako,
+#custom-caffeine,
+#custom-claude-usage,
+#custom-power {
+    background-color: rgba(30, 30, 46, 0.78);
+    border: 1px solid rgba(203, 166, 247, 0.16);
+    border-radius: 999px;
+    padding: 0 12px;
+    margin: 3px 3px;
+    color: #cdd6f4;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* ── Workspaces ────────────────────────────────────────────────── */
+#workspaces {
+    padding: 0 4px;
 }
 
 #workspaces button {
     padding: 0 8px;
+    margin: 2px 1px;
     color: #6c7086;
     background: transparent;
-}
-
-#workspaces button.active {
-    color: #cdd6f4;
-    border-bottom: 2px solid #89b4fa;
+    border-radius: 999px;
+    transition: all 150ms ease;
 }
 
 #workspaces button:hover {
     color: #cdd6f4;
-    background: #313244;
+    background: rgba(203, 166, 247, 0.18);
 }
 
-#window {
-    padding: 0 12px;
-    color: #a6adc8;
+#workspaces button.active {
+    color: #11111b;
+    background-color: #cba6f7;
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.55);
 }
 
+#workspaces button.urgent {
+    color: #11111b;
+    background-color: #f38ba8;
+}
+
+/* ── wlr/taskbar (open apps in centre, one icon per window) ────── */
+/* Wlr taskbar uses GTK image widgets so it can render real icons
+ * from the system icon theme (Papirus-Dark, set via gsettings).
+ * `all-outputs=false` in the module config means each monitor's bar
+ * only shows the windows on workspaces assigned to that monitor —
+ * matching the odd/even-monitor split in hypr/conf.d/10-monitors.conf. */
+#taskbar {
+    background-color: rgba(30, 30, 46, 0.78);
+    border: 1px solid rgba(203, 166, 247, 0.16);
+    border-radius: 999px;
+    padding: 0 6px;
+    margin: 3px 3px;
+}
 #taskbar button {
-    padding: 0 4px;
+    padding: 0 6px;
+    margin: 2px 1px;
     background: transparent;
+    border: 0;
+    border-radius: 8px;
+    transition: background 150ms ease;
 }
-
+#taskbar button:hover {
+    background: rgba(203, 166, 247, 0.20);
+}
 #taskbar button.active {
-    background: #313244;
-    border-radius: 4px;
+    background: rgba(203, 166, 247, 0.30);
 }
 
-#clock,
-#pulseaudio,
-#tray {
-    padding: 0 12px;
-    color: #cdd6f4;
+/* ── Submap indicator (RESIZE / LAYOUTS) ───────────────────────── */
+#submap {
+    color: #f9e2af;
+    background-color: rgba(249, 226, 175, 0.14);
+    border-color: rgba(249, 226, 175, 0.30);
+}
+
+/* ── Focused window title ──────────────────────────────────────── */
+#window {
+    color: #bac2de;
+    font-style: italic;
+}
+
+window#waybar.empty #window {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+/* ── Right-cluster accent colors ───────────────────────────────── */
+#clock {
+    color: #b4befe;
+}
+
+#network {
+    color: #94e2d5;
+}
+
+#bluetooth {
+    color: #89b4fa;
+}
+
+#bluetooth.disabled,
+#bluetooth.off {
+    color: #6c7086;
+}
+
+#pulseaudio {
+    color: #f5c2e7;
 }
 
 #pulseaudio.muted {
     color: #6c7086;
 }
 
-#custom-claude-usage {
-    padding: 0 12px;
-    color: #cdd6f4;
+#custom-mako.dnd {
+    color: #6c7086;
+}
+
+#custom-mako.on {
+    color: #a6e3a1;
+}
+
+#custom-caffeine.on {
+    color: #f9e2af;
+    background-color: rgba(249, 226, 175, 0.18);
+    border-color: rgba(249, 226, 175, 0.40);
+}
+
+#custom-caffeine.off {
+    color: #6c7086;
 }
 
 #custom-claude-usage.low {
@@ -70,12 +177,59 @@ window#waybar {
     color: #f38ba8;
 }
 
-#custom-power {
-    font-size: 24px;
-    padding: 0 12px;
+#custom-claude-usage.error {
     color: #f38ba8;
 }
 
+#tray menu {
+    background-color: rgba(30, 30, 46, 0.95);
+    color: #cdd6f4;
+    border-radius: 10px;
+    padding: 6px;
+}
+
+/* Power keeps its red tint but matches every other pill's metrics
+ * (font-size, padding) so the bar's vertical baseline stays clean. */
+#custom-power {
+    color: #f38ba8;
+    background-color: rgba(243, 139, 168, 0.14);
+    border-color: rgba(243, 139, 168, 0.32);
+}
+
 #custom-power:hover {
-    color: #eba0ac;
+    color: #11111b;
+    background-color: #f38ba8;
+}
+
+/* Single-glyph pills (caffeine, mako, power). Force them to the
+ * `Mono` variant of JetBrainsMono Nerd Font (suffix "Mono"). That
+ * variant constrains every icon glyph to a single mono cell with the
+ * visible mark properly centred — the default "JetBrainsMono Nerd
+ * Font" is the propo variant which lets icon glyphs be wider and
+ * off-centred. Symmetric padding around a properly-centred glyph
+ * gives optical centering with no per-pill tweaks. */
+#custom-caffeine,
+#custom-mako,
+#custom-power {
+    font-family: "JetBrainsMono Nerd Font Mono", "Symbols Nerd Font", monospace;
+    font-size: 16px;
+}
+
+/* FA's coffee glyph (U+F0F4) is drawn smaller than peers in JBM
+ * Nerd Font Mono — bump caffeine specifically so it visually matches
+ * the bell and the power icon. */
+#custom-caffeine {
+    font-size: 21px;
+}
+
+/* ── Tooltips ─────────────────────────────────────────────────── */
+tooltip {
+    background-color: rgba(17, 17, 27, 0.95);
+    border: 1px solid rgba(203, 166, 247, 0.4);
+    border-radius: 10px;
+    color: #cdd6f4;
+}
+
+tooltip label {
+    padding: 4px;
 }
